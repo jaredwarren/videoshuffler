@@ -19,16 +19,16 @@ type Player struct {
 }
 
 // NewPlayer ...
-func NewPlayer(file string) *Player {
+func NewPlayer() *Player {
 	return &Player{
-		FileName: file,
-		Playing:  false,
+		Playing: false,
 	}
 }
 
 // Start ...
-func (p *Player) Start() (err error) {
+func (p *Player) Start(file string) (err error) {
 	p.Playing = true
+	p.FileName = file
 	p.Handler = exec.Command("omxplayer", "-b", "-o", "hdmi", p.FileName)
 	p.Handler.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	p.PipeIn, err = p.Handler.StdinPipe()

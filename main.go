@@ -1,12 +1,14 @@
 package main
 
-// GOARM=6 GOARCH=arm GOOS=linux go build
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	"github.com/spf13/viper"
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/drivers/gpio"
 	"gobot.io/x/gobot/platforms/raspi"
@@ -16,32 +18,60 @@ func init() {
 	rand.Seed(time.Now().UTC().UnixNano())
 }
 
-var episodes []string
-var episodeIndex int
+// PIN decimal pin number
+const PIN = 17
+
+var p *Player
+var wg sync.WaitGroup
 
 func main() {
+	// Config
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	viper.SetDefault("Autostart", false)
+
+	viper.SetDefault("BasePath", "/home/pi/Videos/simpsons/Simpsons*")
+	BasePath := viper.GetString("BasePath")
+	episodes, err := filepath.Glob(BasePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if len(episodes) == 0 {
+		fmt.Fprintf(os.Stderr, "error: No video files found at %s\n", BasePath)
+		os.Exit(1)
+	}
+
+	viper.SetDefault("Shuffle", true)
+	if viper.GetBool("Shuffle") {
+		ShuffleList(episodes)
+	}
+
+	go playEpisodes(episodes)
+
+	// Robot
 	r := raspi.NewAdaptor()
-	button := gpio.NewButtonDriver(r, "11") // 17 in hex
-
-	// TODO: add path config
-	episodes = getEpisodes("/home/pi/Videos/simpsons/Simpsons*")
-
-	// TODO: add shuffle config
-	ShuffleStrings(episodes)
+	button := gpio.NewButtonDriver(r, fmt.Sprintf("%X", PIN))
 
 	work := func() {
 		button.On(gpio.ButtonRelease, func(data interface{}) {
-			// start over
-			if episodeIndex+1 >= len(episodes) {
-				episodeIndex = 0
+			fmt.Print("click")
+			if p == nil {
+				wg.Done()
 			} else {
-				episodeIndex++
+				p.End()
 			}
-
-			playEpisode(episodes[episodeIndex])
+			fmt.Println(".")
 		})
 		button.On(gpio.Error, func(data interface{}) {
-			fmt.Println("Error:", data)
+			fmt.Fprintf(os.Stderr, "error: %v\n", data)
 		})
 	}
 
@@ -54,16 +84,8 @@ func main() {
 	robot.Start()
 }
 
-func getEpisodes(path string) []string {
-	matches, err := filepath.Glob(path)
-	if err != nil {
-		panic(err)
-	}
-	return matches
-}
-
-// ShuffleStrings ...
-func ShuffleStrings(slc []string) {
+// ShuffleList randomly reorder slice of strings
+func ShuffleList(slc []string) {
 	N := len(slc)
 	for i := 0; i < N; i++ {
 		// choose index uniformly in [i, N-1]
@@ -72,16 +94,40 @@ func ShuffleStrings(slc []string) {
 	}
 }
 
-var p *Player
-
-func playEpisode(episode string) {
-	if episode == "" {
-		return
+func playEpisodes(episodes []string) {
+	// wait until button is pressed to start playing.
+	if !viper.GetBool("Autostart") {
+		fmt.Print("Autostart")
+		wg.Add(1)
+		wg.Wait()
+		fmt.Println(";")
 	}
-	if p != nil {
-		p.End()
+	p = NewPlayer()
+	// Play everything
+	for _, episode := range episodes {
+		fmt.Println("Start:", episode)
+		//wg.Add(1)
+		err := p.Start(episode)
+		if err != nil {
+			fmt.Println("start error:", err)
+		}
+		// go func() {
+		// 	defer wg.Done()
+		// 	p.Handler.Wait()
+		// 	fmt.Println("Episode done")
+		// }()
+		// Wait for either command to finish or button to be pressed.
+		fmt.Println("waiting for input or finish")
+		//wg.Wait()
+		err = p.Handler.Wait()
+		if err != nil {
+			fmt.Println("wait error:", err)
+		}
+		fmt.Print("End:", episode)
+		err = p.End()
+		if err != nil {
+			fmt.Println("end error:", err)
+		}
+		fmt.Println(".")
 	}
-	fmt.Println("Playing:", episode)
-	p = NewPlayer(episode)
-	p.Start()
 }
