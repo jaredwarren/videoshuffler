@@ -62,13 +62,13 @@ func main() {
 
 	work := func() {
 		button.On(gpio.ButtonRelease, func(data interface{}) {
-			fmt.Print("click")
 			if p == nil {
-				wg.Done()
+				if !viper.GetBool("Autostart") {
+					wg.Done()
+				}
 			} else {
 				p.End()
 			}
-			fmt.Println(".")
 		})
 		button.On(gpio.Error, func(data interface{}) {
 			fmt.Fprintf(os.Stderr, "error: %v\n", data)
@@ -97,37 +97,23 @@ func ShuffleList(slc []string) {
 func playEpisodes(episodes []string) {
 	// wait until button is pressed to start playing.
 	if !viper.GetBool("Autostart") {
-		fmt.Print("Autostart")
 		wg.Add(1)
 		wg.Wait()
-		fmt.Println(";")
 	}
 	p = NewPlayer()
 	// Play everything
 	for _, episode := range episodes {
-		fmt.Println("Start:", episode)
-		//wg.Add(1)
 		err := p.Start(episode)
 		if err != nil {
-			fmt.Println("start error:", err)
+			fmt.Fprintf(os.Stderr, "start error: %v\n", err)
 		}
-		// go func() {
-		// 	defer wg.Done()
-		// 	p.Handler.Wait()
-		// 	fmt.Println("Episode done")
-		// }()
-		// Wait for either command to finish or button to be pressed.
-		fmt.Println("waiting for input or finish")
-		//wg.Wait()
 		err = p.Handler.Wait()
 		if err != nil {
-			fmt.Println("wait error:", err)
+			fmt.Fprintf(os.Stderr, "wait error: %v\n", err)
 		}
-		fmt.Print("End:", episode)
 		err = p.End()
 		if err != nil {
-			fmt.Println("end error:", err)
+			fmt.Fprintf(os.Stderr, "end error: %v\n", err)
 		}
-		fmt.Println(".")
 	}
 }
