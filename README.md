@@ -71,3 +71,8 @@ sudo systemctl stop simpsons.service
  copy file
 
  reboot
+
+
+
+TODO: make sure it reboots
+      backup sd

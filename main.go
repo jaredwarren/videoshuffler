@@ -28,7 +28,7 @@ func main() {
 	// Config
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
+	viper.AddConfigPath("/home/pi/")
 	err := viper.ReadInConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
