@@ -47,6 +47,7 @@ func (p *Player) End() error {
 		p.FileName = ""
 		p.Playing = false
 	}
+	// if I can't get the pgid, maybe try to kill any instance of omxplayer something like: > killall omxplayer.bin
 	return err
 }
 

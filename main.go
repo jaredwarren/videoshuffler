@@ -5,9 +5,9 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
+	"github.com/rapidloop/skv"
 	"github.com/spf13/viper"
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/drivers/gpio"
@@ -21,23 +21,40 @@ func init() {
 // PIN decimal pin number
 const PIN = 17
 
-var p *Player
-var wg sync.WaitGroup
+var (
+	p  *Player
+	db *skv.KVStore
+
+	// Shuffle ...
+	Shuffle = true
+
+	// AutoStart ...
+	AutoStart = false
+)
 
 func main() {
-	// Config
+	var startFile = ""
+	if db, err := skv.Open("/home/pi/player.db"); err == nil {
+		db.Get("StartFile", &startFile)
+		defer db.Close()
+	} else {
+		// If we can't open the db, just use default
+		fmt.Fprintf(os.Stderr, "error opening db: %v\n", err)
+	}
+
+	// Load Config
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("/home/pi/")
-	err := viper.ReadInConfig()
-	if err != nil {
+	if err := viper.ReadInConfig(); err != nil {
+		// ignore errors and use default
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
 	}
 
 	viper.SetDefault("Autostart", false)
+	AutoStart = viper.GetBool("AutoStart")
 
-	viper.SetDefault("BasePath", "/home/pi/Videos/simpsons/Simpsons*")
+	viper.SetDefault("BasePath", "/home/pi/Videos/*")
 	BasePath := viper.GetString("BasePath")
 	episodes, err := filepath.Glob(BasePath)
 	if err != nil {
@@ -50,11 +67,14 @@ func main() {
 	}
 
 	viper.SetDefault("Shuffle", true)
-	if viper.GetBool("Shuffle") {
+	Shuffle = viper.GetBool("Shuffle")
+	if Shuffle {
 		ShuffleList(episodes)
 	}
 
-	go playEpisodes(episodes)
+	if AutoStart {
+		go playEpisodes(episodes, startFile)
+	}
 
 	// Robot
 	r := raspi.NewAdaptor()
@@ -63,9 +83,7 @@ func main() {
 	work := func() {
 		button.On(gpio.ButtonRelease, func(data interface{}) {
 			if p == nil {
-				if !viper.GetBool("Autostart") {
-					wg.Done()
-				}
+				go playEpisodes(episodes, startFile)
 			} else {
 				p.End()
 			}
@@ -94,15 +112,19 @@ func ShuffleList(slc []string) {
 	}
 }
 
-func playEpisodes(episodes []string) {
-	// wait until button is pressed to start playing.
-	if !viper.GetBool("Autostart") {
-		wg.Add(1)
-		wg.Wait()
-	}
+func playEpisodes(episodes []string, startFile string) {
 	p = NewPlayer()
 	// Play everything
 	for _, episode := range episodes {
+		// Skip until startFile
+		if startFile != "" && startFile != episode {
+			continue
+		}
+		startFile = ""
+		if db != nil {
+			db.Put("StartFile", episode)
+		}
+
 		err := p.Start(episode)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "start error: %v\n", err)
@@ -115,5 +137,11 @@ func playEpisodes(episodes []string) {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "end error: %v\n", err)
 		}
+	}
+
+	// cleanup player
+	p = nil
+	if db != nil {
+		db.Delete("StartFile")
 	}
 }
