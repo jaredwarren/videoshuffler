@@ -1,6 +1,7 @@
 # Raspberry Pi Video Shuffler
 Play a Random Video when GPIO button is pressed.
-I've only tested this with a Raspberry Pi Zero W, but should work with any Raspberry Pi that runs Raspbian
+I've only tested this with a Raspberry Pi Zero W, but should work with any Raspberry Pi that runs Raspbian. 
+This project is based off Stephen Coyle's Simpsons Shuffler:http://stephencoyle.net/the-pi-zero-simpsons-shuffler/
 
 ## Setup Raspberry Pi
 ### Install Raspbian
